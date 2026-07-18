@@ -114,26 +114,32 @@ def fetch_and_format(limit=FETCH_LAST_N_LIVE):
 # -----------------------------
 # BEAUTIFUL PLOTTING HELPER
 # -----------------------------
+# -----------------------------
+# BEAUTIFUL PLOTTING HELPER
+# -----------------------------
 def plot_beautiful_graph(df, title, height=450):
     fig = go.Figure()
     
     # 1. LM35 Trace (Cyan)
     x_s, y_s = smooth_xy(df["Time"], df["LM35 (T1)"])
-    fig.add_trace(go.Scatter(x=x_s, y=y_s, mode="lines", name="LM35 (T1)", 
-                             line=dict(color="#00d2ff", width=3, shape="spline"),
-                             fill='tozeroy', fillcolor="rgba(0, 210, 255, 0.05)"))
+    fig.add_trace(go.Scatter(
+        x=x_s, y=y_s, mode="lines", name="LM35 (T1)", 
+        line=dict(color="#00d2ff", width=3, shape="spline")
+    ))
     
     # 2. DHT22 Trace (Orange)
     x_s, y_s = smooth_xy(df["Time"], df["DHT22 (T2)"])
-    fig.add_trace(go.Scatter(x=x_s, y=y_s, mode="lines", name="DHT22 (T2)", 
-                             line=dict(color="#ff9900", width=3, shape="spline"),
-                             fill='tozeroy', fillcolor="rgba(255, 153, 0, 0.05)"))
+    fig.add_trace(go.Scatter(
+        x=x_s, y=y_s, mode="lines", name="DHT22 (T2)", 
+        line=dict(color="#ff9900", width=3, shape="spline")
+    ))
     
     # 3. Fused Temp Trace (Bold Red)
     x_s, y_s = smooth_xy(df["Time"], df["Fused Temp (FT)"])
-    fig.add_trace(go.Scatter(x=x_s, y=y_s, mode="lines", name="Edge Fused Temp", 
-                             line=dict(color="#ff0055", width=5, shape="spline"),
-                             fill='tozeroy', fillcolor="rgba(255, 0, 85, 0.15)"))
+    fig.add_trace(go.Scatter(
+        x=x_s, y=y_s, mode="lines", name="Edge Fused Temp", 
+        line=dict(color="#ff0055", width=4, shape="spline")
+    ))
     
     # Make it look sleek and modern
     fig.update_layout(
@@ -142,8 +148,19 @@ def plot_beautiful_graph(df, title, height=450):
         hovermode="x unified",
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(title="Time", showgrid=True, gridcolor='rgba(255,255,255,0.1)', tickfont=dict(size=14)),
-        yaxis=dict(title="Temperature (°C)", showgrid=True, gridcolor='rgba(255,255,255,0.1)', tickfont=dict(size=14)),
+        xaxis=dict(
+            title="Time", 
+            showgrid=True, 
+            gridcolor='rgba(255,255,255,0.1)', 
+            tickfont=dict(size=14)
+        ),
+        yaxis=dict(
+            title="Temperature (°C)", 
+            showgrid=True, 
+            gridcolor='rgba(255,255,255,0.1)', 
+            tickfont=dict(size=14),
+            autorange=True  # Automatically zooms in tightly around the data points
+        ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
         margin=dict(l=40, r=40, t=80, b=40)
     )
