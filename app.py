@@ -114,9 +114,6 @@ def fetch_and_format(limit=FETCH_LAST_N_LIVE):
 # -----------------------------
 # BEAUTIFUL PLOTTING HELPER
 # -----------------------------
-# -----------------------------
-# BEAUTIFUL PLOTTING HELPER
-# -----------------------------
 def plot_beautiful_graph(df, title, height=450):
     fig = go.Figure()
     
@@ -268,7 +265,8 @@ def render_history():
 
             # Downsample to 5-minute precision
             if is_time and not df_hist.empty:
-                df_hist = df_hist.set_index("Time").resample("5min").mean().dropna().reset_index()
+                # Added numeric_only=True to prevent Pandas crashing on non-numeric columns
+                df_hist = df_hist.set_index("Time").resample("5min").mean(numeric_only=True).dropna().reset_index()
             
             if df_hist.empty:
                 st.warning("No data recorded during the selected timeframe.")
