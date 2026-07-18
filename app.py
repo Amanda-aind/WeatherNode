@@ -44,7 +44,7 @@ if st.sidebar.button("🔄 Reset All Data"):
 # -----------------------------
 @st.cache_data(ttl=600)
 def get_local_weather():
-    """Fetches real-world ambient weather for Kadawatha, Sri Lanka."""
+    """Fetches real-world ambient weather for the local region."""
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=7.027&longitude=79.951&current=temperature_2m,relative_humidity_2m&timezone=auto"
         res = requests.get(url, timeout=5).json()
@@ -87,11 +87,13 @@ def fetch_and_format(limit=FETCH_LAST_N_LIVE):
             return pd.DataFrame()
 
         processed = []
-        for i, row in enumerate(data_json.values()):
-            # Only include the record if it actually HAS a time
-            if "Time" in row:
+        for key, row in data_json.items():
+            # Check for both "Time" and "ts" depending on firmware version
+            raw_time = row.get("Time", row.get("ts", None))
+            
+            if raw_time is not None:
                 processed.append({
-                    "Time": row.get("Time"),
+                    "Time": raw_time,
                     "LM35 (T1)": float(row.get("T1", 0)),
                     "DHT22 (T2)": float(row.get("T2", 0)),
                     "Fused Temp (FT)": float(row.get("FT", 0)),
@@ -103,16 +105,30 @@ def fetch_and_format(limit=FETCH_LAST_N_LIVE):
         if df.empty:
             return pd.DataFrame()
 
-        # Convert to datetime and drop anything that isn't a valid, modern date
-        df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
+        # --- THE CLAUDE FIX: Precision Parsing & Timezone Alignment ---
+        def safe_parse(t):
+            try:
+                # If it's a raw epoch number, this handles the nanosecond bug
+                return pd.to_datetime(float(t), unit='s', utc=True)
+            except (ValueError, TypeError):
+                # Fallback if the ESP32 is sending a formatted string
+                return pd.to_datetime(t, utc=True, errors='coerce')
+
+        # Apply robust parsing
+        df["Time"] = df["Time"].apply(safe_parse)
+        
+        # Drop anything that completely failed to parse
         df = df.dropna(subset=["Time"])
         
-        # Only keep data from 2026 onwards
-        df = df[df["Time"].dt.year >= 2026]
+        if not df.empty:
+            # Convert UTC directly to the local timezone offset, then remove timezone metadata 
+            # so Plotly doesn't try to "fix" it back to UTC automatically.
+            df["Time"] = df["Time"].dt.tz_convert(LOCAL_TZ).dt.tz_localize(None)
             
         return df
     except Exception:
         return pd.DataFrame()
+
 # -----------------------------
 # BEAUTIFUL PLOTTING HELPER
 # -----------------------------
