@@ -93,7 +93,7 @@ def fetch_and_format():
 
                 "DHT22 (T2)": float(row.get("T2", 0)),
 
-                "Fused Temp (FT)": float(row.get("FT", 0)),
+                "Fused Temp (FT)": int(row.get("FT", 0)),
 
                 "Humidity": float(row.get("Hum", 0))
 
