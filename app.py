@@ -11,9 +11,9 @@ from scipy.interpolate import PchipInterpolator
 # CONFIGURATION
 # -----------------------------
 FIREBASE_URL = "https://weathernode-d6c04-default-rtdb.asia-southeast1.firebasedatabase.app/data.json"
-FETCH_LAST_N_LIVE = 300          
-FETCH_LAST_N_HISTORY = 50000  
-DENSE_POINTS = 300          
+FETCH_LAST_N_LIVE = 300
+FETCH_LAST_N_HISTORY = 50000
+DENSE_POINTS = 300
 
 # Local Timezone offset (UTC +5:30)
 LOCAL_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -46,7 +46,6 @@ if st.sidebar.button("🔄 Reset All Data"):
 def get_local_weather():
     """Fetches real-world ambient weather for Kadawatha, Sri Lanka."""
     try:
-        # Coordinates for Kadawatha region
         url = "https://api.open-meteo.com/v1/forecast?latitude=7.027&longitude=79.951&current=temperature_2m,relative_humidity_2m&timezone=auto"
         res = requests.get(url, timeout=5).json()
         return res['current']['temperature_2m'], res['current']['relative_humidity_2m']
@@ -156,7 +155,7 @@ def plot_beautiful_graph(df, title, height=450):
             showgrid=True, 
             gridcolor='rgba(255,255,255,0.1)', 
             tickfont=dict(size=14),
-            autorange=True  # Automatically zooms in tightly around the data points
+            autorange=True 
         ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
         margin=dict(l=40, r=40, t=80, b=40)
@@ -206,11 +205,9 @@ def render_live_home():
 
     # --- MAIN LIVE GRAPH (Strict 10-Minute Rolling Window) ---
     if pd.api.types.is_datetime64_any_dtype(df["Time"]):
-        # Find the newest time and subtract 10 minutes to create a cutoff point
         ten_mins_ago = df["Time"].max() - pd.Timedelta(minutes=10)
         df_plot = df[df["Time"] >= ten_mins_ago]
     else:
-        # Fallback if timestamps are missing
         df_plot = df
 
     st.plotly_chart(plot_beautiful_graph(df_plot, "Live Hardware Feed (Last 10 Minutes)"), use_container_width=True, key="live_main")
@@ -222,7 +219,7 @@ def render_live_home():
 def render_history():
     st.markdown("## 🔍 Sensor Data History")
     
-    # --- 5 MINUTE GRAPH (MOVED HERE) ---
+    # --- 5 MINUTE GRAPH ---
     df_live = fetch_and_format(limit=FETCH_LAST_N_LIVE)
     if not df_live.empty and pd.api.types.is_datetime64_any_dtype(df_live["Time"]):
         five_mins_ago = df_live["Time"].max() - pd.Timedelta(minutes=5)
@@ -265,7 +262,6 @@ def render_history():
 
             # Downsample to 5-minute precision
             if is_time and not df_hist.empty:
-                # Add numeric_only=True to prevent Pandas crashing
                 df_hist = df_hist.set_index("Time").resample("5min").mean(numeric_only=True).dropna().reset_index()
             
             if df_hist.empty:
