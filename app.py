@@ -265,7 +265,7 @@ def render_history():
 
             # Downsample to 5-minute precision
             if is_time and not df_hist.empty:
-                # Added numeric_only=True to prevent Pandas crashing on non-numeric columns
+                # Add numeric_only=True to prevent Pandas crashing
                 df_hist = df_hist.set_index("Time").resample("5min").mean(numeric_only=True).dropna().reset_index()
             
             if df_hist.empty:
