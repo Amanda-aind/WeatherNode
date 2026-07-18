@@ -101,6 +101,13 @@ def fetch_and_format(limit=FETCH_LAST_N_LIVE):
         
         if "Time" in df.columns:
             df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
+            
+            # --- THE 1970 ASSASSIN ---
+            df = df[df["Time"].dt.year >= 2025]
+            
+            if df.empty:
+                return pd.DataFrame()
+                
             if df["Time"].isna().all():
                 df["Time"] = df["Reading"]
         else:
