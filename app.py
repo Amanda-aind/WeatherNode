@@ -3,6 +3,7 @@ import requests
 import numpy as np
 import pandas as pd
 import time
+import plotly.graph_objects as go
 
 # --- CLOUD CONFIG ---
 # Direct API endpoint to your working WeatherNode database
@@ -82,17 +83,29 @@ if df is not None and not df.empty:
     
     st.markdown("---")
     
-    # Main Dashboard Visualizations
-    st.subheader("Temperature Sensor Fusion Performance")
-    st.line_chart(df.set_index("Reading")[["LM35 (T1)", "DHT22 (T2)", "Fused Temp"]])
+    # --- New Detailed Visualizations ---
+    st.subheader("High-Resolution Sensor Analysis")
+    
+    fig = go.Figure()
+    
+    # Add traces for each sensor
+    fig.add_trace(go.Scatter(x=df['Reading'], y=df['LM35 (T1)'], name='LM35 (T1)', line=dict(width=1)))
+    fig.add_trace(go.Scatter(x=df['Reading'], y=df['DHT22 (T2)'], name='DHT22 (T2)', line=dict(width=1)))
+    fig.add_trace(go.Scatter(x=df['Reading'], y=df['Fused Temp'], name='Fused Temp', line=dict(width=2)))
+    
+    # Update layout to allow zooming
+    fig.update_layout(
+        xaxis_title="Reading Number",
+        yaxis_title="Temperature (°C)",
+        hovermode="x unified",
+        dragmode="zoom" 
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
     
     st.subheader("Ambient Humidity Trend")
     st.line_chart(df.set_index("Reading")[["Humidity"]], color="#008080")
-    
-    # Dynamic page trigger
-    if st.button("Fetch Fresh Data"):
-        st.rerun()
 
-
-time.sleep(2) # Wait 10 seconds
-st.rerun()     # Automatically refresh the page
+# 5. Auto-Refresh Logic
+time.sleep(10)
+st.rerun()
