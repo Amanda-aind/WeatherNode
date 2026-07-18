@@ -11,22 +11,20 @@ st.set_page_config(page_title="WeatherNode Hub", layout="wide")
 st.title("WeatherNode: Live Edge-Processed Hub")
 
 def fetch_and_format():
-    # 1. Fetch edge-computed data from your database API
     response = requests.get(FIREBASE_URL)
     data_json = response.json()
     
-    if data_json is None:
+    if not data_json:
         st.warning("No data found in Firebase yet.")
         return None
         
     raw_data = list(data_json.values())
     processed_data = []
     
-    # 2. Extract the data (Math is already done by the ESP32!)
     for index, row in enumerate(raw_data):
         T1 = float(row.get('T1', 0))
         T2 = float(row.get('T2', 0))
-        FT = float(row.get('FT', 0)) # Fetching the edge-computed Fused Temp
+        FT = float(row.get('FT', 0))
         Hum = float(row.get('Hum', 0))
         
         processed_data.append({
@@ -41,36 +39,54 @@ def fetch_and_format():
 
 df = fetch_and_format()
 
-# 3. Render Layout
 if df is not None and not df.empty:
-    # Key Summary Metrics Top Bar
     col1, col2, col3 = st.columns(3)
-    col1.metric("Latest Edge Fused Temp", f"{df['Fused Temp'].iloc[-1]} °C")
+    col1.metric("Latest Fused Temp", f"{df['Fused Temp'].iloc[-1]} °C")
     col2.metric("Latest Humidity", f"{df['Humidity'].iloc[-1]} %")
-    col3.metric("Total Recorded Points", len(df))
+    col3.metric("Total Readings", len(df))
     
     st.markdown("---")
     
-    # Detailed Visualizations (Plotly)
-    st.subheader("High-Resolution Sensor Analysis")
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['Reading'], y=df['LM35 (T1)'], name='LM35 (T1)', line=dict(width=1)))
-    fig.add_trace(go.Scatter(x=df['Reading'], y=df['DHT22 (T2)'], name='DHT22 (T2)', line=dict(width=1)))
-    fig.add_trace(go.Scatter(x=df['Reading'], y=df['Fused Temp'], name='Edge Fused Temp', line=dict(width=2)))
-    
-    fig.update_layout(
-        xaxis_title="Reading Number",
-        yaxis_title="Temperature (°C)",
-        hovermode="x unified",
-        dragmode="zoom" 
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-    st.subheader("Ambient Humidity Trend")
-    st.line_chart(df.set_index("Reading")[["Humidity"]], color="#008080")
+    # 1. ALL-IN-ONE GRAPH
+    st.subheader("Combined Sensor Fusion")
+    fig_all = go.Figure()
+    fig_all.add_trace(go.Scatter(x=df['Reading'], y=df['LM35 (T1)'], name='LM35 (T1)', line=dict(width=1, color='#1f77b4')))
+    fig_all.add_trace(go.Scatter(x=df['Reading'], y=df['DHT22 (T2)'], name='DHT22 (T2)', line=dict(width=1, color='#ff7f0e')))
+    fig_all.add_trace(go.Scatter(x=df['Reading'], y=df['Fused Temp'], name='Fused Temp (FT)', line=dict(width=2, color='#d62728')))
+    fig_all.update_layout(xaxis_title="Reading Number", yaxis_title="Temperature (°C)", hovermode="x unified")
+    st.plotly_chart(fig_all, use_container_width=True)
 
-# 4. Auto-Refresh Logic
+    st.markdown("---")
+    
+    # 2. INDIVIDUAL GRAPHS GRID
+    colA, colB = st.columns(2)
+    
+    with colA:
+        st.subheader("LM35 Raw Data")
+        fig_t1 = go.Figure()
+        fig_t1.add_trace(go.Scatter(x=df['Reading'], y=df['LM35 (T1)'], name='LM35 (T1)', line=dict(width=2, color='#1f77b4')))
+        fig_t1.update_layout(margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
+        st.plotly_chart(fig_t1, use_container_width=True)
+        
+        st.subheader("DHT22 Raw Data")
+        fig_t2 = go.Figure()
+        fig_t2.add_trace(go.Scatter(x=df['Reading'], y=df['DHT22 (T2)'], name='DHT22 (T2)', line=dict(width=2, color='#ff7f0e')))
+        fig_t2.update_layout(margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
+        st.plotly_chart(fig_t2, use_container_width=True)
+
+    with colB:
+        st.subheader("Fused Temperature Output")
+        fig_ft = go.Figure()
+        fig_ft.add_trace(go.Scatter(x=df['Reading'], y=df['Fused Temp'], name='Fused Temp', line=dict(width=2, color='#d62728')))
+        fig_ft.update_layout(margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
+        st.plotly_chart(fig_ft, use_container_width=True)
+
+        st.subheader("Ambient Humidity")
+        fig_hum = go.Figure()
+        fig_hum.add_trace(go.Scatter(x=df['Reading'], y=df['Humidity'], name='Humidity (%)', line=dict(width=2, color='#2ca02c')))
+        fig_hum.update_layout(margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
+        st.plotly_chart(fig_hum, use_container_width=True)
+
+# Auto-Refresh Logic
 time.sleep(10)
 st.rerun()
