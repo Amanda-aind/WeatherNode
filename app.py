@@ -207,8 +207,16 @@ def render_live_home():
     c3.metric("Live Feed Buffer", f"{len(df)} Points")
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- MAIN LIVE GRAPH ---
-    st.plotly_chart(plot_beautiful_graph(df, "Live Hardware Feed (Real-Time)"), use_container_width=True, key="live_main")
+    # --- MAIN LIVE GRAPH (Strict 10-Minute Rolling Window) ---
+    if pd.api.types.is_datetime64_any_dtype(df["Time"]):
+        # Find the newest time and subtract 10 minutes to create a cutoff point
+        ten_mins_ago = df["Time"].max() - pd.Timedelta(minutes=10)
+        df_plot = df[df["Time"] >= ten_mins_ago]
+    else:
+        # Fallback if timestamps are missing
+        df_plot = df
+
+    st.plotly_chart(plot_beautiful_graph(df_plot, "Live Hardware Feed (Last 10 Minutes)"), use_container_width=True, key="live_main")
 
 
 # -----------------------------
