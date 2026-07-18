@@ -90,7 +90,6 @@ def fetch_and_format(limit=FETCH_LAST_N_LIVE):
         for i, row in enumerate(data_json.values()):
             processed.append({
                 "Time": row.get("Time", None),
-                "Reading": i + 1,
                 "LM35 (T1)": float(row.get("T1", 0)),
                 "DHT22 (T2)": float(row.get("T2", 0)),
                 "Fused Temp (FT)": float(row.get("FT", 0)),
@@ -99,24 +98,20 @@ def fetch_and_format(limit=FETCH_LAST_N_LIVE):
             
         df = pd.DataFrame(processed)
         
+        # Force time conversion
         if "Time" in df.columns:
+            # Coerce errors to NaT (Not a Time)
             df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
             
-            # --- THE 1970 ASSASSIN ---
-            df = df[df["Time"].dt.year >= 2025]
+            # STRIKE 1: Remove rows where Time is NaT (failed to parse)
+            df = df.dropna(subset=["Time"])
             
-            if df.empty:
-                return pd.DataFrame()
-                
-            if df["Time"].isna().all():
-                df["Time"] = df["Reading"]
-        else:
-            df["Time"] = df["Reading"]
+            # STRIKE 2: Filter out 1970 (Ghost data)
+            df = df[df["Time"].dt.year >= 2026]
             
         return df
     except Exception:
         return pd.DataFrame()
-
 # -----------------------------
 # BEAUTIFUL PLOTTING HELPER
 # -----------------------------
