@@ -4,94 +4,278 @@ import pandas as pd
 import time
 import plotly.graph_objects as go
 
-# --- CLOUD CONFIG ---
+# -----------------------------
+# CONFIGURATION
+# -----------------------------
 FIREBASE_URL = "https://weathernode-d6c04-default-rtdb.asia-southeast1.firebasedatabase.app/data.json"
 
-st.set_page_config(page_title="WeatherNode Hub", layout="wide")
+st.set_page_config(
+    page_title="WeatherNode Hub",
+    page_icon="🌤️",
+    layout="wide"
+)
 
-# --- SIDEBAR CONTROLS ---
+# -----------------------------
+# SIDEBAR
+# -----------------------------
 st.sidebar.title("Dashboard Controls")
-if st.sidebar.button("Reset Graphs"):
-    st.cache_data.clear()  # Clears cached data
-    st.rerun()             # Forces a fresh reload
 
-st.title("WeatherNode: Live Edge-Processed Hub")
+if st.sidebar.button("🔄 Reset Graphs"):
 
-def fetch_and_format():
     try:
-        response = requests.get(FIREBASE_URL, timeout=5)
-        data_json = response.json()
-        
-        if not data_json:
-            st.warning("No data found in Firebase yet.")
-            return None
-            
-        raw_data = list(data_json.values())
-        processed_data = []
-        
-        for index, row in enumerate(raw_data):
-            processed_data.append({
-                "Reading": index + 1,
-                "LM35 (T1)": float(row.get('T1', 0)),
-                "DHT22 (T2)": float(row.get('T2', 0)),
-                "Fused Temp (FT)": float(row.get('FT', 0)),
-                "Humidity": float(row.get('Hum', 0))
-            })
-        return pd.DataFrame(processed_data)
+        requests.delete(FIREBASE_URL, timeout=5)
+        st.sidebar.success("Graphs Reset!")
+        time.sleep(1)
+
     except Exception as e:
-        st.error(f"Error fetching data: {e}")
-        return None
+        st.sidebar.error(f"Reset Failed\n{e}")
+
+    st.rerun()
+
+st.title("🌤️ WeatherNode : Live Edge-Processed Dashboard")
+
+# -----------------------------
+# FETCH DATA
+# -----------------------------
+def fetch_and_format():
+
+    try:
+
+        response = requests.get(FIREBASE_URL, timeout=5)
+
+        data_json = response.json()
+
+        if not data_json:
+            return pd.DataFrame()
+
+        processed = []
+
+        for i, row in enumerate(data_json.values()):
+
+            processed.append({
+
+                "Reading": i + 1,
+
+                "LM35 (T1)": float(row.get("T1", 0)),
+
+                "DHT22 (T2)": float(row.get("T2", 0)),
+
+                "Fused Temp (FT)": float(row.get("FT", 0)),
+
+                "Humidity": float(row.get("Hum", 0))
+
+            })
+
+        return pd.DataFrame(processed)
+
+    except Exception as e:
+
+        st.error(f"Error fetching data : {e}")
+
+        return pd.DataFrame()
+
 
 df = fetch_and_format()
 
-if df is not None and not df.empty:
+# -----------------------------
+# NO DATA
+# -----------------------------
+if df.empty:
+
+    st.info("Waiting for sensor data...")
+
+# -----------------------------
+# DATA AVAILABLE
+# -----------------------------
+else:
+
     col1, col2, col3 = st.columns(3)
-    col1.metric("Latest Fused Temp", f"{df['Fused Temp (FT)'].iloc[-1]:.2f} °C")
-    col2.metric("Latest Humidity", f"{df['Humidity'].iloc[-1]:.1f} %")
-    col3.metric("Total Readings", len(df))
-    
+
+    col1.metric(
+        "Latest Fused Temp",
+        f"{df['Fused Temp (FT)'].iloc[-1]:.2f} °C"
+    )
+
+    col2.metric(
+        "Latest Humidity",
+        f"{df['Humidity'].iloc[-1]:.1f} %"
+    )
+
+    col3.metric(
+        "Total Readings",
+        len(df)
+    )
+
     st.markdown("---")
-    
-    # 1. ALL-IN-ONE GRAPH
+
+    # ===================================================
+    # COMBINED GRAPH
+    # ===================================================
+
     st.subheader("Combined Sensor Fusion")
-    fig_all = go.Figure()
-    fig_all.add_trace(go.Scatter(x=df['Reading'], y=df['LM35 (T1)'], name='LM35 (T1)', line=dict(width=1, color='#1f77b4')))
-    fig_all.add_trace(go.Scatter(x=df['Reading'], y=df['DHT22 (T2)'], name='DHT22 (T2)', line=dict(width=1, color='#ff7f0e')))
-    fig_all.add_trace(go.Scatter(x=df['Reading'], y=df['Fused Temp (FT)'], name='Fused Temp (FT)', line=dict(width=2, color='#d62728')))
-    fig_all.update_layout(height=400, xaxis_title="Reading Number", yaxis_title="Temp (°C)", hovermode="x unified")
-    st.plotly_chart(fig_all, use_container_width=True)
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=df["Reading"],
+            y=df["LM35 (T1)"],
+            mode="lines",
+            name="LM35",
+            line=dict(color="#1f77b4", width=2)
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=df["Reading"],
+            y=df["DHT22 (T2)"],
+            mode="lines",
+            name="DHT22",
+            line=dict(color="#ff7f0e", width=2)
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=df["Reading"],
+            y=df["Fused Temp (FT)"],
+            mode="lines",
+            name="Fused Temp",
+            line=dict(color="#d62728", width=3)
+        )
+    )
+
+    fig.update_layout(
+
+        height=450,
+
+        hovermode="x unified",
+
+        xaxis=dict(
+            title="Reading Number",
+            autorange=True
+        ),
+
+        yaxis=dict(
+            title="Temperature (°C)",
+            autorange=True
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
-    
-    # 2. INDIVIDUAL GRAPHS GRID
-    colA, colB = st.columns(2)
-    
-    with colA:
-        st.subheader("LM35 Raw Data")
-        fig_t1 = go.Figure()
-        fig_t1.add_trace(go.Scatter(x=df['Reading'], y=df['LM35 (T1)'], name='LM35 (T1)', line=dict(width=2, color='#1f77b4')))
-        fig_t1.update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
-        st.plotly_chart(fig_t1, use_container_width=True)
-        
-        st.subheader("DHT22 Raw Data")
-        fig_t2 = go.Figure()
-        fig_t2.add_trace(go.Scatter(x=df['Reading'], y=df['DHT22 (T2)'], name='DHT22 (T2)', line=dict(width=2, color='#ff7f0e')))
-        fig_t2.update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
-        st.plotly_chart(fig_t2, use_container_width=True)
 
-    with colB:
-        st.subheader("Fused Temperature Output")
-        fig_ft = go.Figure()
-        fig_ft.add_trace(go.Scatter(x=df['Reading'], y=df['Fused Temp (FT)'], name='FT', line=dict(width=2, color='#d62728')))
-        fig_ft.update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
-        st.plotly_chart(fig_ft, use_container_width=True)
+    # ===================================================
+    # INDIVIDUAL GRAPHS
+    # ===================================================
 
-        st.subheader("Ambient Humidity")
-        fig_hum = go.Figure()
-        fig_hum.add_trace(go.Scatter(x=df['Reading'], y=df['Humidity'], name='Humidity', line=dict(width=2, color='#2ca02c')))
-        fig_hum.update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
-        st.plotly_chart(fig_hum, use_container_width=True)
+    left, right = st.columns(2)
 
-# Auto-Refresh Logic
-time.sleep(10)
+    # -------------------------
+    # LM35
+    # -------------------------
+    with left:
+
+        st.subheader("LM35 Raw Temperature")
+
+        fig1 = go.Figure()
+
+        fig1.add_trace(
+            go.Scatter(
+                x=df["Reading"],
+                y=df["LM35 (T1)"],
+                mode="lines",
+                line=dict(color="#1f77b4", width=2)
+            )
+        )
+
+        fig1.update_layout(
+            height=300,
+            xaxis=dict(autorange=True),
+            yaxis=dict(autorange=True),
+            margin=dict(l=20, r=20, t=30, b=20)
+        )
+
+        st.plotly_chart(fig1, use_container_width=True)
+
+        # ---------------------
+
+        st.subheader("DHT22 Raw Temperature")
+
+        fig2 = go.Figure()
+
+        fig2.add_trace(
+            go.Scatter(
+                x=df["Reading"],
+                y=df["DHT22 (T2)"],
+                mode="lines",
+                line=dict(color="#ff7f0e", width=2)
+            )
+        )
+
+        fig2.update_layout(
+            height=300,
+            xaxis=dict(autorange=True),
+            yaxis=dict(autorange=True),
+            margin=dict(l=20, r=20, t=30, b=20)
+        )
+
+        st.plotly_chart(fig2, use_container_width=True)
+
+    # ===================================================
+
+    with right:
+
+        st.subheader("Fused Temperature")
+
+        fig3 = go.Figure()
+
+        fig3.add_trace(
+            go.Scatter(
+                x=df["Reading"],
+                y=df["Fused Temp (FT)"],
+                mode="lines",
+                line=dict(color="red", width=3)
+            )
+        )
+
+        fig3.update_layout(
+            height=300,
+            xaxis=dict(autorange=True),
+            yaxis=dict(autorange=True),
+            margin=dict(l=20, r=20, t=30, b=20)
+        )
+
+        st.plotly_chart(fig3, use_container_width=True)
+
+        # -----------------------
+
+        st.subheader("Humidity")
+
+        fig4 = go.Figure()
+
+        fig4.add_trace(
+            go.Scatter(
+                x=df["Reading"],
+                y=df["Humidity"],
+                mode="lines",
+                line=dict(color="green", width=2)
+            )
+        )
+
+        fig4.update_layout(
+            height=300,
+            xaxis=dict(autorange=True),
+            yaxis=dict(autorange=True),
+            margin=dict(l=20, r=20, t=30, b=20)
+        )
+
+        st.plotly_chart(fig4, use_container_width=True)
+
+# -----------------------------
+# AUTO REFRESH
+# -----------------------------
+time.sleep(3)
 st.rerun()
