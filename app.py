@@ -11,7 +11,7 @@ from scipy.interpolate import PchipInterpolator
 # -----------------------------
 FIREBASE_URL = "https://weathernode-d6c04-default-rtdb.asia-southeast1.firebasedatabase.app/data.json"
 FETCH_LAST_N = 200          # cap how much history we pull each refresh (Firebase grows unbounded)
-RIGHT_PADDING = 3           # keep the newest point ~3 "readings" in from the right edge
+RIGHT_PADDING = 1           # keep the newest point ~3 "readings" in from the right edge
 DENSE_POINTS = 300          # resolution of the smoothed curve, independent of data size
 
 st.set_page_config(
