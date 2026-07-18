@@ -88,26 +88,27 @@ def fetch_and_format(limit=FETCH_LAST_N_LIVE):
 
         processed = []
         for i, row in enumerate(data_json.values()):
-            processed.append({
-                "Time": row.get("Time", None),
-                "LM35 (T1)": float(row.get("T1", 0)),
-                "DHT22 (T2)": float(row.get("T2", 0)),
-                "Fused Temp (FT)": float(row.get("FT", 0)),
-                "Humidity": float(row.get("Hum", 0))
-            })
+            # Only include the record if it actually HAS a time
+            if "Time" in row:
+                processed.append({
+                    "Time": row.get("Time"),
+                    "LM35 (T1)": float(row.get("T1", 0)),
+                    "DHT22 (T2)": float(row.get("T2", 0)),
+                    "Fused Temp (FT)": float(row.get("FT", 0)),
+                    "Humidity": float(row.get("Hum", 0))
+                })
             
         df = pd.DataFrame(processed)
         
-        # Force time conversion
-        if "Time" in df.columns:
-            # Coerce errors to NaT (Not a Time)
-            df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
-            
-            # STRIKE 1: Remove rows where Time is NaT (failed to parse)
-            df = df.dropna(subset=["Time"])
-            
-            # STRIKE 2: Filter out 1970 (Ghost data)
-            df = df[df["Time"].dt.year >= 2026]
+        if df.empty:
+            return pd.DataFrame()
+
+        # Convert to datetime and drop anything that isn't a valid, modern date
+        df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
+        df = df.dropna(subset=["Time"])
+        
+        # Only keep data from 2026 onwards
+        df = df[df["Time"].dt.year >= 2026]
             
         return df
     except Exception:
