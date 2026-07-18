@@ -1,18 +1,13 @@
 import streamlit as st
 import requests
-import numpy as np
 import pandas as pd
 import time
 import plotly.graph_objects as go
-from scipy.interpolate import PchipInterpolator
 
 # -----------------------------
 # CONFIGURATION
 # -----------------------------
 FIREBASE_URL = "https://weathernode-d6c04-default-rtdb.asia-southeast1.firebasedatabase.app/data.json"
-FETCH_LAST_N = 200          # cap how much history we pull each refresh (Firebase grows unbounded)
-RIGHT_PADDING = 3           # keep the newest point ~3 "readings" in from the right edge
-DENSE_POINTS = 300          # resolution of the smoothed curve, independent of data size
 
 st.set_page_config(
     page_title="WeatherNode Hub",
@@ -40,41 +35,13 @@ if st.sidebar.button("🔄 Reset Graphs"):
 st.title("🌤️ WeatherNode : Live Edge-Processed Dashboard")
 
 # -----------------------------
-# SMOOTHING HELPER
-# -----------------------------
-def smooth_xy(x, y, num_dense=DENSE_POINTS):
-    """Shape-preserving spline (PCHIP) so the curve stays smooth without
-    inventing overshoot between real readings. Falls back to raw points
-    when there isn't enough data to interpolate."""
-    x = np.asarray(x, dtype=float)
-    y = np.asarray(y, dtype=float)
-
-    if len(x) < 3 or len(np.unique(x)) < 3:
-        return x, y
-
-    try:
-        interpolator = PchipInterpolator(x, y)
-    except Exception:
-        return x, y
-
-    x_dense = np.linspace(x.min(), x.max(), num_dense)
-    y_dense = interpolator(x_dense)
-    return x_dense, y_dense
-
-
-def x_range_with_padding(x, pad=RIGHT_PADDING):
-    if len(x) == 0:
-        return [0, pad]
-    return [float(np.min(x)), float(np.max(x)) + pad]
-
-# -----------------------------
 # FETCH DATA
 # -----------------------------
 def fetch_and_format():
 
     try:
-        params = {"orderBy": '"$key"', "limitToLast": FETCH_LAST_N}
-        response = requests.get(FIREBASE_URL, params=params, timeout=5)
+
+        response = requests.get(FIREBASE_URL, timeout=5)
 
         data_json = response.json()
 
@@ -141,8 +108,6 @@ else:
 
     st.markdown("---")
 
-    x_range = x_range_with_padding(df["Reading"])
-
     # ===================================================
     # COMBINED GRAPH
     # ===================================================
@@ -151,36 +116,33 @@ else:
 
     fig = go.Figure()
 
-    x_s, y_s = smooth_xy(df["Reading"], df["LM35 (T1)"])
     fig.add_trace(
         go.Scatter(
-            x=x_s,
-            y=y_s,
+            x=df["Reading"],
+            y=df["LM35 (T1)"],
             mode="lines",
             name="LM35",
-            line=dict(color="#1f77b4", width=2, shape="spline")
+            line=dict(color="#1f77b4", width=2)
         )
     )
 
-    x_s, y_s = smooth_xy(df["Reading"], df["DHT22 (T2)"])
     fig.add_trace(
         go.Scatter(
-            x=x_s,
-            y=y_s,
+            x=df["Reading"],
+            y=df["DHT22 (T2)"],
             mode="lines",
             name="DHT22",
-            line=dict(color="#ff7f0e", width=2, shape="spline")
+            line=dict(color="#ff7f0e", width=2)
         )
     )
 
-    x_s, y_s = smooth_xy(df["Reading"], df["Fused Temp (FT)"])
     fig.add_trace(
         go.Scatter(
-            x=x_s,
-            y=y_s,
+            x=df["Reading"],
+            y=df["Fused Temp (FT)"],
             mode="lines",
             name="Fused Temp",
-            line=dict(color="#d62728", width=3, shape="spline")
+            line=dict(color="#d62728", width=3)
         )
     )
 
@@ -192,8 +154,7 @@ else:
 
         xaxis=dict(
             title="Reading Number",
-            range=x_range,
-            autorange=False
+            autorange=True
         ),
 
         yaxis=dict(
@@ -219,21 +180,20 @@ else:
 
         st.subheader("LM35 Raw Temperature")
 
-        x_s, y_s = smooth_xy(df["Reading"], df["LM35 (T1)"])
         fig1 = go.Figure()
 
         fig1.add_trace(
             go.Scatter(
-                x=x_s,
-                y=y_s,
+                x=df["Reading"],
+                y=df["LM35 (T1)"],
                 mode="lines",
-                line=dict(color="#1f77b4", width=2, shape="spline")
+                line=dict(color="#1f77b4", width=2)
             )
         )
 
         fig1.update_layout(
             height=300,
-            xaxis=dict(range=x_range, autorange=False),
+            xaxis=dict(autorange=True),
             yaxis=dict(autorange=True),
             margin=dict(l=20, r=20, t=30, b=20)
         )
@@ -244,21 +204,20 @@ else:
 
         st.subheader("DHT22 Raw Temperature")
 
-        x_s, y_s = smooth_xy(df["Reading"], df["DHT22 (T2)"])
         fig2 = go.Figure()
 
         fig2.add_trace(
             go.Scatter(
-                x=x_s,
-                y=y_s,
+                x=df["Reading"],
+                y=df["DHT22 (T2)"],
                 mode="lines",
-                line=dict(color="#ff7f0e", width=2, shape="spline")
+                line=dict(color="#ff7f0e", width=2)
             )
         )
 
         fig2.update_layout(
             height=300,
-            xaxis=dict(range=x_range, autorange=False),
+            xaxis=dict(autorange=True),
             yaxis=dict(autorange=True),
             margin=dict(l=20, r=20, t=30, b=20)
         )
@@ -271,21 +230,20 @@ else:
 
         st.subheader("Fused Temperature")
 
-        x_s, y_s = smooth_xy(df["Reading"], df["Fused Temp (FT)"])
         fig3 = go.Figure()
 
         fig3.add_trace(
             go.Scatter(
-                x=x_s,
-                y=y_s,
+                x=df["Reading"],
+                y=df["Fused Temp (FT)"],
                 mode="lines",
-                line=dict(color="red", width=3, shape="spline")
+                line=dict(color="red", width=3)
             )
         )
 
         fig3.update_layout(
             height=300,
-            xaxis=dict(range=x_range, autorange=False),
+            xaxis=dict(autorange=True),
             yaxis=dict(autorange=True),
             margin=dict(l=20, r=20, t=30, b=20)
         )
@@ -296,21 +254,20 @@ else:
 
         st.subheader("Humidity")
 
-        x_s, y_s = smooth_xy(df["Reading"], df["Humidity"])
         fig4 = go.Figure()
 
         fig4.add_trace(
             go.Scatter(
-                x=x_s,
-                y=y_s,
+                x=df["Reading"],
+                y=df["Humidity"],
                 mode="lines",
-                line=dict(color="green", width=2, shape="spline")
+                line=dict(color="green", width=2)
             )
         )
 
         fig4.update_layout(
             height=300,
-            xaxis=dict(range=x_range, autorange=False),
+            xaxis=dict(autorange=True),
             yaxis=dict(autorange=True),
             margin=dict(l=20, r=20, t=30, b=20)
         )
