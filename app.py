@@ -12,7 +12,7 @@ from scipy.interpolate import PchipInterpolator
 # -----------------------------
 FIREBASE_URL = "https://weathernode-d6c04-default-rtdb.asia-southeast1.firebasedatabase.app/data.json"
 FETCH_LAST_N_LIVE = 300          
-FETCH_LAST_N_HISTORY = 50000  # Cap historical fetch to prevent RAM crashes
+FETCH_LAST_N_HISTORY = 50000  
 DENSE_POINTS = 300          
 
 # Local Timezone offset (UTC +5:30)
@@ -21,33 +21,32 @@ LOCAL_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 st.set_page_config(
     page_title="WeatherNode Hub",
     page_icon="🌤️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
 # -----------------------------
 # SIDEBAR CONTROLS
 # -----------------------------
-st.sidebar.title("Dashboard Controls")
+st.sidebar.title("⚙️ Dashboard Controls")
 
-if st.sidebar.button("🔄 Reset Graphs"):
+if st.sidebar.button("🔄 Reset All Data"):
     try:
         requests.delete(FIREBASE_URL, timeout=5)
-        st.sidebar.success("Graphs Reset!")
+        st.sidebar.success("Database Cleared!")
         time.sleep(1)
     except Exception as e:
         st.sidebar.error(f"Reset Failed\n{e}")
     st.rerun()
-
-st.title("🌤️ WeatherNode : Live Edge-Processed Dashboard")
 
 # -----------------------------
 # MATH & DATA HELPERS
 # -----------------------------
 @st.cache_data(ttl=600)
 def get_local_weather():
-    """Fetches real-world ambient weather for the hardware's location."""
+    """Fetches real-world ambient weather for Kadawatha, Sri Lanka."""
     try:
-        # Open-Meteo API (No Key Required)
+        # Coordinates for Kadawatha region
         url = "https://api.open-meteo.com/v1/forecast?latitude=7.027&longitude=79.951&current=temperature_2m,relative_humidity_2m&timezone=auto"
         res = requests.get(url, timeout=5).json()
         return res['current']['temperature_2m'], res['current']['relative_humidity_2m']
@@ -113,27 +112,50 @@ def fetch_and_format(limit=FETCH_LAST_N_LIVE):
         return pd.DataFrame()
 
 # -----------------------------
-# PLOTTING HELPER
+# BEAUTIFUL PLOTTING HELPER
 # -----------------------------
-def plot_combined_graph(df, title, height=400):
+def plot_beautiful_graph(df, title, height=450):
     fig = go.Figure()
     
+    # 1. LM35 Trace (Cyan)
     x_s, y_s = smooth_xy(df["Time"], df["LM35 (T1)"])
-    fig.add_trace(go.Scatter(x=x_s, y=y_s, mode="lines", name="LM35", line=dict(color="#1f77b4", width=2, shape="spline")))
+    fig.add_trace(go.Scatter(x=x_s, y=y_s, mode="lines", name="LM35 (T1)", 
+                             line=dict(color="#00d2ff", width=3, shape="spline"),
+                             fill='tozeroy', fillcolor="rgba(0, 210, 255, 0.05)"))
     
+    # 2. DHT22 Trace (Orange)
     x_s, y_s = smooth_xy(df["Time"], df["DHT22 (T2)"])
-    fig.add_trace(go.Scatter(x=x_s, y=y_s, mode="lines", name="DHT22", line=dict(color="#ff7f0e", width=2, shape="spline")))
+    fig.add_trace(go.Scatter(x=x_s, y=y_s, mode="lines", name="DHT22 (T2)", 
+                             line=dict(color="#ff9900", width=3, shape="spline"),
+                             fill='tozeroy', fillcolor="rgba(255, 153, 0, 0.05)"))
     
+    # 3. Fused Temp Trace (Bold Red)
     x_s, y_s = smooth_xy(df["Time"], df["Fused Temp (FT)"])
-    fig.add_trace(go.Scatter(x=x_s, y=y_s, mode="lines", name="Fused Temp", line=dict(color="#d62728", width=3, shape="spline")))
+    fig.add_trace(go.Scatter(x=x_s, y=y_s, mode="lines", name="Edge Fused Temp", 
+                             line=dict(color="#ff0055", width=5, shape="spline"),
+                             fill='tozeroy', fillcolor="rgba(255, 0, 85, 0.15)"))
     
-    fig.update_layout(title=title, height=height, hovermode="x unified", xaxis=dict(title="Time", autorange=True), yaxis=dict(title="Temperature (°C)", autorange=True))
+    # Make it look sleek and modern
+    fig.update_layout(
+        title=dict(text=f"<b>{title}</b>", font=dict(size=24, color="white")),
+        height=height,
+        hovermode="x unified",
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(title="Time", showgrid=True, gridcolor='rgba(255,255,255,0.1)', tickfont=dict(size=14)),
+        yaxis=dict(title="Temperature (°C)", showgrid=True, gridcolor='rgba(255,255,255,0.1)', tickfont=dict(size=14)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
+        margin=dict(l=40, r=40, t=80, b=40)
+    )
     return fig
 
+
 # ===================================================
-# TABS ARCHITECTURE
+# UI ARCHITECTURE
 # ===================================================
-tab_home, tab_history = st.tabs(["🏠 Live Home", "🕰️ Past Graphs"])
+st.markdown("<h1 style='text-align: center; margin-bottom: 20px;'>🌤️ WeatherNode Dashboard</h1>", unsafe_allow_html=True)
+
+tab_home, tab_history = st.tabs(["🏠 LIVE HOME", "🕰️ PAST GRAPHS & HISTORY"])
 
 # -----------------------------
 # TAB 1: LIVE HOME (Fragment)
@@ -146,48 +168,56 @@ def render_live_home():
         st.info("Waiting for sensor data from ESP32...")
         return
 
-    # 1. Real-Time Environment Header
-    local_time = datetime.datetime.now(LOCAL_TZ).strftime("%A, %b %d | %I:%M %p")
+    # --- MASSIVE HEADER UI ---
+    local_time = datetime.datetime.now(LOCAL_TZ).strftime("%I:%M:%S %p")
+    local_date = datetime.datetime.now(LOCAL_TZ).strftime("%A, %b %d")
     amb_temp, amb_hum = get_local_weather()
     
-    env_col1, env_col2 = st.columns([1, 1])
-    env_col1.markdown(f"**🕒 Local Time:** {local_time}")
-    if amb_temp:
-        env_col2.markdown(f"**🌍 Ambient Weather:** {amb_temp}°C, {amb_hum}% RH")
-    else:
-        env_col2.markdown("**🌍 Ambient Weather:** Syncing...")
-    
-    st.markdown("---")
+    weather_display = f"{amb_temp}°C | 💧 {amb_hum}%" if amb_temp else "Syncing..."
 
-    # 2. Hardware Metrics
+    st.markdown(f"""
+        <div style="background-color: #1a1a1a; padding: 40px; border-radius: 20px; text-align: center; border: 1px solid #333; margin-bottom: 30px;">
+            <p style="font-size: 1.5rem; color: #888; margin: 0;">{local_date}</p>
+            <h1 style="font-size: 5rem; color: #ffffff; margin: -10px 0 10px 0; font-weight: 800; letter-spacing: 2px;">🕒 {local_time}</h1>
+            <h2 style="font-size: 2.5rem; color: #4dabf7; margin: 0; font-weight: 400;">📍 Kadawatha, LK : <b>{weather_display}</b></h2>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # --- SENSOR METRICS ---
     c1, c2, c3 = st.columns(3)
     c1.metric("Latest Fused Temp", f"{df['Fused Temp (FT)'].iloc[-1]:.2f} °C")
     c2.metric("Latest Humidity", f"{df['Humidity'].iloc[-1]:.1f} %")
     c3.metric("Live Feed Buffer", f"{len(df)} Points")
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    # 3. Main Live Graph (Full Buffer)
-    st.plotly_chart(plot_combined_graph(df, "Live Hardware Feed"), use_container_width=True, key="live_main")
-
-    # 4. Short-Window (5-Minute Window) High Resolution Graph
-    if pd.api.types.is_datetime64_any_dtype(df["Time"]):
-        five_mins_ago = df["Time"].max() - pd.Timedelta(minutes=5)
-        df_5min = df[df["Time"] >= five_mins_ago]
-        if not df_5min.empty:
-            st.plotly_chart(plot_combined_graph(df_5min, "Last 5 Minutes (High Resolution Focus)", height=300), use_container_width=True, key="live_5min")
+    # --- MAIN LIVE GRAPH ---
+    st.plotly_chart(plot_beautiful_graph(df, "Live Hardware Feed (Real-Time)"), use_container_width=True, key="live_main")
 
 
 # -----------------------------
 # TAB 2: HISTORICAL EXPLORER
 # -----------------------------
 def render_history():
-    st.markdown("### 🔍 Historical Analysis")
-    st.write("Examine past data. Data is mathematically resampled to 5-minute precision averages to ensure smooth performance over long timeframes.")
+    st.markdown("## 🔍 Sensor Data History")
+    
+    # --- 5 MINUTE GRAPH (MOVED HERE) ---
+    df_live = fetch_and_format(limit=FETCH_LAST_N_LIVE)
+    if not df_live.empty and pd.api.types.is_datetime64_any_dtype(df_live["Time"]):
+        five_mins_ago = df_live["Time"].max() - pd.Timedelta(minutes=5)
+        df_5min = df_live[df_live["Time"] >= five_mins_ago]
+        if not df_5min.empty:
+            st.plotly_chart(plot_beautiful_graph(df_5min, "Last 5 Minutes (High Resolution)", height=350), use_container_width=True, key="hist_5min")
+            
+    st.markdown("---")
+    
+    # --- LONG TERM HISTORY ---
+    st.markdown("### 🕰️ Long-Term Analysis")
+    st.write("*Data is mathematically resampled to 5-minute precision averages to ensure ultra-smooth performance over long timeframes.*")
     
     time_filter = st.radio("Select Timeframe:", ["1 Hour", "12 Hours", "24 Hours", "2 Days", "1 Week", "All"], horizontal=True)
 
-    if st.button("Load Historical Data"):
-        with st.spinner("Fetching and interpolating data from Firebase..."):
+    if st.button("Load Historical Data", type="primary"):
+        with st.spinner("Fetching massive dataset from Firebase..."):
             df_hist = fetch_and_format(limit=FETCH_LAST_N_HISTORY)
             
             if df_hist.empty:
@@ -211,7 +241,7 @@ def render_history():
                 cutoff = latest_time - deltas[time_filter]
                 df_hist = df_hist[df_hist["Time"] >= cutoff]
 
-            # Downsample to 5-minute precision if dealing with real datetime
+            # Downsample to 5-minute precision
             if is_time and not df_hist.empty:
                 df_hist = df_hist.set_index("Time").resample("5min").mean().dropna().reset_index()
             
@@ -219,10 +249,8 @@ def render_history():
                 st.warning("No data recorded during the selected timeframe.")
                 return
 
-            st.success(f"Successfully loaded {len(df_hist)} aggregated 5-minute blocks.")
-            
-            # Render History Graph
-            st.plotly_chart(plot_combined_graph(df_hist, f"Filtered History: {time_filter}"), use_container_width=True, key="history_main")
+            st.success(f"Successfully loaded and compressed {len(df_hist)} data blocks.")
+            st.plotly_chart(plot_beautiful_graph(df_hist, f"Filtered History: {time_filter}"), use_container_width=True, key="history_main")
 
 
 # ===================================================
