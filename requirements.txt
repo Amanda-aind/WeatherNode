@@ -1,1 +1,4 @@
-a
+streamlit
+requests
+numpy
+pandas
