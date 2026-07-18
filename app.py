@@ -75,7 +75,7 @@ def fetch_and_format():
                 "Reading": i + 1,
                 "LM35 (T1)": float(row.get("T1", 0)),
                 "DHT22 (T2)": float(row.get("T2", 0)),
-                "Fused Temp (FT)": float(row.get("FT", 0)),
+                "Fused Temp (FT)": float(row.get("FT", 1)),
                 "Humidity": float(row.get("Hum", 0))
             })
         return pd.DataFrame(processed)
