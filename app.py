@@ -3,6 +3,7 @@ import requests
 import numpy as np
 import pandas as pd
 import time
+import datetime
 import plotly.graph_objects as go
 from scipy.interpolate import PchipInterpolator
 
@@ -10,8 +11,12 @@ from scipy.interpolate import PchipInterpolator
 # CONFIGURATION
 # -----------------------------
 FIREBASE_URL = "https://weathernode-d6c04-default-rtdb.asia-southeast1.firebasedatabase.app/data.json"
-FETCH_LAST_N = 200          
+FETCH_LAST_N_LIVE = 300          
+FETCH_LAST_N_HISTORY = 50000  # Cap historical fetch to prevent RAM crashes
 DENSE_POINTS = 300          
+
+# Local Timezone offset (UTC +5:30)
+LOCAL_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
 st.set_page_config(
     page_title="WeatherNode Hub",
@@ -34,16 +39,24 @@ if st.sidebar.button("🔄 Reset Graphs"):
     st.rerun()
 
 st.title("🌤️ WeatherNode : Live Edge-Processed Dashboard")
-st.markdown("---")
 
 # -----------------------------
 # MATH & DATA HELPERS
 # -----------------------------
+@st.cache_data(ttl=600)
+def get_local_weather():
+    """Fetches real-world ambient weather for the hardware's location."""
+    try:
+        # Open-Meteo API (No Key Required)
+        url = "https://api.open-meteo.com/v1/forecast?latitude=7.027&longitude=79.951&current=temperature_2m,relative_humidity_2m&timezone=auto"
+        res = requests.get(url, timeout=5).json()
+        return res['current']['temperature_2m'], res['current']['relative_humidity_2m']
+    except Exception:
+        return None, None
+
 def smooth_xy(x, y, num_dense=DENSE_POINTS):
-    """Upgraded to handle pure Datetime arrays for real-time tracking."""
     is_time = pd.api.types.is_datetime64_any_dtype(x)
     
-    # Convert datetime to UNIX timestamp for math interpolation
     if is_time:
         x_num = x.astype(int) / 10**9
     else:
@@ -59,7 +72,6 @@ def smooth_xy(x, y, num_dense=DENSE_POINTS):
         x_dense = np.linspace(x_num.min(), x_num.max(), num_dense)
         y_dense = interpolator(x_dense)
         
-        # Convert UNIX timestamps back to Datetime objects for plotting
         if is_time:
             x_dense = pd.to_datetime(x_dense, unit='s')
             
@@ -67,10 +79,10 @@ def smooth_xy(x, y, num_dense=DENSE_POINTS):
     except Exception:
         return x, y
 
-def fetch_and_format():
+def fetch_and_format(limit=FETCH_LAST_N_LIVE):
     try:
-        params = {"orderBy": '"$key"', "limitToLast": FETCH_LAST_N}
-        response = requests.get(FIREBASE_URL, params=params, timeout=5)
+        params = {"orderBy": '"$key"', "limitToLast": limit}
+        response = requests.get(FIREBASE_URL, params=params, timeout=10)
         data_json = response.json()
 
         if not data_json:
@@ -89,10 +101,8 @@ def fetch_and_format():
             
         df = pd.DataFrame(processed)
         
-        # Convert to Datetime. Fall back to reading number if Time is missing.
         if "Time" in df.columns:
             df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
-            # If Time is fully NaT (Not a Time), revert to Reading index
             if df["Time"].isna().all():
                 df["Time"] = df["Reading"]
         else:
@@ -103,25 +113,9 @@ def fetch_and_format():
         return pd.DataFrame()
 
 # -----------------------------
-# LIVE UPDATING FRAGMENT
+# PLOTTING HELPER
 # -----------------------------
-@st.fragment(run_every=3)
-def live_dashboard():
-    df = fetch_and_format()
-
-    if df.empty:
-        st.info("Waiting for sensor data...")
-        return
-
-    # --- 1. METRICS ---
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Latest Fused Temp", f"{df['Fused Temp (FT)'].iloc[-1]:.2f} °C")
-    col2.metric("Latest Humidity", f"{df['Humidity'].iloc[-1]:.1f} %")
-    col3.metric("Total Readings", len(df))
-    st.markdown("---")
-
-    # --- 2. COMBINED GRAPH ---
-    st.subheader("Combined Sensor Fusion")
+def plot_combined_graph(df, title, height=400):
     fig = go.Figure()
     
     x_s, y_s = smooth_xy(df["Time"], df["LM35 (T1)"])
@@ -133,38 +127,109 @@ def live_dashboard():
     x_s, y_s = smooth_xy(df["Time"], df["Fused Temp (FT)"])
     fig.add_trace(go.Scatter(x=x_s, y=y_s, mode="lines", name="Fused Temp", line=dict(color="#d62728", width=3, shape="spline")))
     
-    fig.update_layout(height=450, hovermode="x unified", xaxis=dict(title="Time", autorange=True), yaxis=dict(title="Temperature (°C)", autorange=True))
-    st.plotly_chart(fig, use_container_width=True, key="combo_chart")
+    fig.update_layout(title=title, height=height, hovermode="x unified", xaxis=dict(title="Time", autorange=True), yaxis=dict(title="Temperature (°C)", autorange=True))
+    return fig
 
+# ===================================================
+# TABS ARCHITECTURE
+# ===================================================
+tab_home, tab_history = st.tabs(["🏠 Live Home", "🕰️ Past Graphs"])
+
+# -----------------------------
+# TAB 1: LIVE HOME (Fragment)
+# -----------------------------
+@st.fragment(run_every=3)
+def render_live_home():
+    df = fetch_and_format(limit=FETCH_LAST_N_LIVE)
+
+    if df.empty:
+        st.info("Waiting for sensor data from ESP32...")
+        return
+
+    # 1. Real-Time Environment Header
+    local_time = datetime.datetime.now(LOCAL_TZ).strftime("%A, %b %d | %I:%M %p")
+    amb_temp, amb_hum = get_local_weather()
+    
+    env_col1, env_col2 = st.columns([1, 1])
+    env_col1.markdown(f"**🕒 Local Time:** {local_time}")
+    if amb_temp:
+        env_col2.markdown(f"**🌍 Ambient Weather:** {amb_temp}°C, {amb_hum}% RH")
+    else:
+        env_col2.markdown("**🌍 Ambient Weather:** Syncing...")
+    
     st.markdown("---")
 
-    # --- 3. INDIVIDUAL GRAPHS ---
-    left, right = st.columns(2)
+    # 2. Hardware Metrics
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Latest Fused Temp", f"{df['Fused Temp (FT)'].iloc[-1]:.2f} °C")
+    c2.metric("Latest Humidity", f"{df['Humidity'].iloc[-1]:.1f} %")
+    c3.metric("Live Feed Buffer", f"{len(df)} Points")
+    st.markdown("---")
 
-    with left:
-        st.subheader("LM35 Raw Temperature")
-        x_s, y_s = smooth_xy(df["Time"], df["LM35 (T1)"])
-        fig1 = go.Figure(go.Scatter(x=x_s, y=y_s, mode="lines", line=dict(color="#1f77b4", width=2, shape="spline")))
-        fig1.update_layout(height=300, xaxis=dict(title="Time", autorange=True), yaxis=dict(autorange=True), margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig1, use_container_width=True, key="lm35_chart")
+    # 3. Main Live Graph (Full Buffer)
+    st.plotly_chart(plot_combined_graph(df, "Live Hardware Feed"), use_container_width=True, key="live_main")
 
-        st.subheader("DHT22 Raw Temperature")
-        x_s, y_s = smooth_xy(df["Time"], df["DHT22 (T2)"])
-        fig2 = go.Figure(go.Scatter(x=x_s, y=y_s, mode="lines", line=dict(color="#ff7f0e", width=2, shape="spline")))
-        fig2.update_layout(height=300, xaxis=dict(title="Time", autorange=True), yaxis=dict(autorange=True), margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig2, use_container_width=True, key="dht22_chart")
+    # 4. Short-Window (5-Minute Window) High Resolution Graph
+    if pd.api.types.is_datetime64_any_dtype(df["Time"]):
+        five_mins_ago = df["Time"].max() - pd.Timedelta(minutes=5)
+        df_5min = df[df["Time"] >= five_mins_ago]
+        if not df_5min.empty:
+            st.plotly_chart(plot_combined_graph(df_5min, "Last 5 Minutes (High Resolution Focus)", height=300), use_container_width=True, key="live_5min")
 
-    with right:
-        st.subheader("Fused Temperature")
-        x_s, y_s = smooth_xy(df["Time"], df["Fused Temp (FT)"])
-        fig3 = go.Figure(go.Scatter(x=x_s, y=y_s, mode="lines", line=dict(color="red", width=3, shape="spline")))
-        fig3.update_layout(height=300, xaxis=dict(title="Time", autorange=True), yaxis=dict(autorange=True), margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig3, use_container_width=True, key="ft_chart")
 
-        st.subheader("Humidity")
-        x_s, y_s = smooth_xy(df["Time"], df["Humidity"])
-        fig4 = go.Figure(go.Scatter(x=x_s, y=y_s, mode="lines", line=dict(color="green", width=2, shape="spline")))
-        fig4.update_layout(height=300, xaxis=dict(title="Time", autorange=True), yaxis=dict(autorange=True), margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig4, use_container_width=True, key="hum_chart")
+# -----------------------------
+# TAB 2: HISTORICAL EXPLORER
+# -----------------------------
+def render_history():
+    st.markdown("### 🔍 Historical Analysis")
+    st.write("Examine past data. Data is mathematically resampled to 5-minute precision averages to ensure smooth performance over long timeframes.")
+    
+    time_filter = st.radio("Select Timeframe:", ["1 Hour", "12 Hours", "24 Hours", "2 Days", "1 Week", "All"], horizontal=True)
 
-live_dashboard()
+    if st.button("Load Historical Data"):
+        with st.spinner("Fetching and interpolating data from Firebase..."):
+            df_hist = fetch_and_format(limit=FETCH_LAST_N_HISTORY)
+            
+            if df_hist.empty:
+                st.warning("No historical data found.")
+                return
+                
+            is_time = pd.api.types.is_datetime64_any_dtype(df_hist["Time"])
+            
+            # Filter Timeframe
+            if is_time and time_filter != "All":
+                latest_time = df_hist["Time"].max()
+                
+                deltas = {
+                    "1 Hour": pd.Timedelta(hours=1),
+                    "12 Hours": pd.Timedelta(hours=12),
+                    "24 Hours": pd.Timedelta(hours=24),
+                    "2 Days": pd.Timedelta(days=2),
+                    "1 Week": pd.Timedelta(days=7)
+                }
+                
+                cutoff = latest_time - deltas[time_filter]
+                df_hist = df_hist[df_hist["Time"] >= cutoff]
+
+            # Downsample to 5-minute precision if dealing with real datetime
+            if is_time and not df_hist.empty:
+                df_hist = df_hist.set_index("Time").resample("5min").mean().dropna().reset_index()
+            
+            if df_hist.empty:
+                st.warning("No data recorded during the selected timeframe.")
+                return
+
+            st.success(f"Successfully loaded {len(df_hist)} aggregated 5-minute blocks.")
+            
+            # Render History Graph
+            st.plotly_chart(plot_combined_graph(df_hist, f"Filtered History: {time_filter}"), use_container_width=True, key="history_main")
+
+
+# ===================================================
+# EXECUTE UI
+# ===================================================
+with tab_home:
+    render_live_home()
+
+with tab_history:
+    render_history()
