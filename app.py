@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import numpy as np
 import pandas as pd
+import time
 
 # --- CLOUD CONFIG ---
 # Direct API endpoint to your working WeatherNode database
@@ -91,3 +92,7 @@ if df is not None and not df.empty:
     # Dynamic page trigger
     if st.button("Fetch Fresh Data"):
         st.rerun()
+
+
+time.sleep(2) # Wait 10 seconds
+st.rerun()     # Automatically refresh the page
